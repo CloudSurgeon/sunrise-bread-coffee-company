@@ -194,6 +194,11 @@ export const GameScreen: React.FC<GameScreenProps> = ({
 
   const [paused, setPaused] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [allowPortraitOverride, setAllowPortraitOverride] = useState(false);
+  const [isPortraitPhone, setIsPortraitPhone] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth < window.innerHeight && window.innerWidth <= 760 : false
+  );
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [timeLeft, setTimeLeft] = useState<number>(mode === 'shift' ? config.durationSec : 0);
   const [elapsedSec, setElapsedSec] = useState<number>(0);
 
@@ -221,6 +226,45 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const [dragPayload, setDragPayload] = useState<DragPayload | null>(null);
   const [trashHover, setTrashHover] = useState(false);
 
+  const needsRotate = isPortraitPhone && !allowPortraitOverride;
+
+  useEffect(() => {
+    const checkOrientation = () => {
+      const portrait = window.innerWidth < window.innerHeight && window.innerWidth <= 760;
+      setIsPortraitPhone(portrait);
+      if (!portrait) setAllowPortraitOverride(false);
+    };
+    const onFullscreenChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    checkOrientation();
+    window.addEventListener('resize', checkOrientation);
+    window.addEventListener('orientationchange', checkOrientation);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => {
+      window.removeEventListener('resize', checkOrientation);
+      window.removeEventListener('orientationchange', checkOrientation);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+    };
+  }, []);
+
+  const handleToggleFullscreenLandscape = useCallback(async () => {
+    soundEngine.playTap();
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen?.();
+        const orientation = screen.orientation as ScreenOrientation & {
+          lock?: (mode: string) => Promise<void>;
+        };
+        await orientation?.lock?.('landscape');
+      } else {
+        await document.exitFullscreen?.();
+      }
+    } catch {
+      // iOS Safari and some browsers restrict orientation.lock / fullscreen; user can rotate device naturally
+    }
+  }, []);
+
   // Refs for fresh state inside fixed-step loop & callbacks
   const finishedRef = useRef(false);
   const lastServeAtRef = useRef<number>(0);
@@ -232,6 +276,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const stateRef = useRef({
     paused,
     showGuide,
+    needsRotate,
     timeLeft,
     elapsedSec,
     customers,
@@ -250,6 +295,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     stateRef.current = {
       paused,
       showGuide,
+      needsRotate,
       timeLeft,
       elapsedSec,
       customers,
@@ -366,7 +412,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     const DT = 0.1;
     const interval = window.setInterval(() => {
       const cur = stateRef.current;
-      if (cur.paused || cur.showGuide || finishedRef.current) return;
+      if (cur.paused || cur.showGuide || cur.needsRotate || finishedRef.current) return;
 
       // 1. Shift Clock / Elapsed
       if (mode === 'shift') {
@@ -1148,6 +1194,14 @@ export const GameScreen: React.FC<GameScreenProps> = ({
 
         <div className="hud-right">
           <button
+            id="btn-fullscreen"
+            className="hud-icon-btn"
+            onClick={handleToggleFullscreenLandscape}
+            title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen Landscape'}
+          >
+            {isFullscreen ? '⤢' : '⛶'}
+          </button>
+          <button
             id="btn-recipe-guide"
             className="hud-icon-btn"
             onClick={() => {
@@ -1734,6 +1788,42 @@ export const GameScreen: React.FC<GameScreenProps> = ({
             <button className="primary-btn" onClick={() => setShowGuide(false)}>
               Got It — Back to Counter!
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ROTATE TO LANDSCAPE PROMPT FOR PHONES IN PORTRAIT */}
+      {needsRotate && (
+        <div className="modal-backdrop rotate-backdrop">
+          <div className="modal-card rotate-modal">
+            <div className="rotate-phone-anim" aria-hidden="true">
+              <svg width="88" height="88" viewBox="0 0 88 88" fill="none">
+                <rect x="26" y="12" width="36" height="64" rx="7" fill="#FFF8EE" stroke="#4B2E1E" strokeWidth="3.5" />
+                <rect x="31" y="20" width="26" height="44" rx="2" fill="#FFD166" stroke="#4B2E1E" strokeWidth="2" />
+                <circle cx="44" cy="70" r="2.5" fill="#4B2E1E" />
+                <path d="M68 24 A28 28 0 0 1 72 56" stroke="#FF7A45" strokeWidth="4" strokeLinecap="round" fill="none" />
+                <path d="M67 52 L73 59 L78 51" stroke="#FF7A45" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+              </svg>
+            </div>
+            <h2>Rotate to Landscape!</h2>
+            <p className="modal-subtitle">
+              Turn your phone sideways so the Coffee Bar, Breakfast in a Cup griddle, and Bakery Oven all fit side-by-side—zero scrolling!
+            </p>
+            <p className="rotate-paused-note">⏸ Your shift timer is paused while you rotate.</p>
+            <div className="modal-actions">
+              <button className="primary-btn" onClick={handleToggleFullscreenLandscape}>
+                ⛶ Switch to Landscape Fullscreen
+              </button>
+              <button
+                className="secondary-btn compact-btn"
+                onClick={() => {
+                  soundEngine.playTap();
+                  setAllowPortraitOverride(true);
+                }}
+              >
+                Play in Portrait Anyway
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,0 +1,10 @@
+{
+  "name": "Sunrise Bread & Coffee Company",
+  "short_name": "Sunrise Cafe",
+  "description": "Titusville, FL Space Coast breakfast & coffee counter-service game.",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#4B2E1E",
+  "theme_color": "#4B2E1E"
+}
